@@ -11,12 +11,13 @@ import base64
 
 # Create your views here.
 
+
+
 def home(request):
          
     return render(request,'home.html')
 
-def read_and_format_file(request):
-    print("Llegamos")
+def read_and_format_file(request):    
     '''Función para leer y obtener datos del archivo'''
     if request.method == 'POST':        
         if 'archivo-cargado' in request.FILES:
@@ -43,12 +44,25 @@ def read_and_format_file(request):
                     for z in range(len(datos[i])):
                         lista_temp.append(float(datos[i][z]))
                     lista_datos.append(lista_temp)
-                diccionario = {'headers':encabezados,'cant_filas':filas,'contenido_filas':lista_datos}
+                request.session['lista_datos'] = lista_datos    
+                diccionario = {'headers':encabezados,'cant_filas':filas}
                 return render(request,'home.html',{'diccionario':diccionario})
         else:
             return HttpResponse("Error 400: El archivo no se cargó correctamente.")
 
 def loaded_file_visulization(request):
+    if request.method == 'POST':
+        grafico_elegido = request.POST.get('grafico')
+        columnas_elegidas = request.POST.getlist('columnas')
+        numero_filas_elegidas = request.POST.get('cant_filas_usar')
+        lista_datos = request.session.get('lista_datos',[])
+        print(grafico_elegido)
+        print(columnas_elegidas)
+        print(numero_filas_elegidas)
+        print(lista_datos)
+        
+
+        return HttpResponse("Todo Correcto")
     """                            
     plt.figure(figsize = (10,6))
     plt.bar(encabezados,lista_datos[0])                

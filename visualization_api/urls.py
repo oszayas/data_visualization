@@ -21,5 +21,7 @@ from visualizer.views import home,loaded_file_visulization,read_and_format_file
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', home, name = 'home'),
-    path('visualization', read_and_format_file, name = 'read_and_format_file')
+    path('readed_file/', read_and_format_file, name = 'read_and_format_file'),
+    path('visualization', loaded_file_visulization, name = 'loaded_file_visulization')
+
 ]

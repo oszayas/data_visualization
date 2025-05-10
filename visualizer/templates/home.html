@@ -3,9 +3,7 @@
     <head>
         <title>Home</title>
         <link rel="stylesheet" href="../static/css/bootstrap.min.css">     
-        <meta	name="viewport"	content="width=device-width,	initial-scale=1,shrink-to-fit=no">
-       
-        </style>
+        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     </head>
     <body>
         <nav class="navbar navbar-expand-lg navbar-light bg-info bg-gradient">
@@ -13,36 +11,11 @@
         </nav>
         
         <div class="container-fluid">
-            <div class="row" style="padding-top: 50px;"> 
+            <div class="row" style="padding-top: 40px;"> 
                 <div class="col-md-9">
                     <form method="post" enctype="multipart/form-data" action="{% url 'read_and_format_file' %}">
                         {% csrf_token %}
                         <div class="row">
-                            
-                            <div class="col-sm-4">       
-                                <h5>Gráficos</h5>
-                                <br>                 
-                                <ul class="nav nav-pills flex-column">
-                                    <li class="nav-item">
-                                        <input type="radio" id="lineas" name="grafico" value="lineas" checked>       
-                                        <label for="lineas">Gráfico de Líneas</label>  
-                                    </li>                      
-                                    <li class="nav-item">                      
-                                        <input type="radio" id="barras" name="grafico" value="barras">
-                                        <label for="barras">Gráfico de Barras</label>
-                                    </li> 
-                                    <li class="nav-item">                        
-                                        <input type="radio" id="pastel" name="grafico" value="pastel">
-                                        <label for="pastel">Gráfico de Pastel</label>
-                                    </li>
-                                    <li class="nav-item">                     
-                                        <input type="radio" id="bigotes" name="grafico" value="bigotes">
-                                        <label for="bigotes">Gráfico de Bigotes</label>
-                                    </li>
-                                </ul>
-                            </div>
-                            
-                            
                             <div class="col-sm-4 offset-sm-1">
                                 <div class="d-flex flex-column">
                                     <input type="file" accept=".json,.txt,.csv" name="archivo-cargado" class="form-control-file mb-2">
@@ -54,27 +27,49 @@
                     </form>  
                 </div>
                        
-                
-                <div class = "col-md-3">
-                    <form action="" method="post">                      
-                        
+                <div class="col-md-3">
+                    <form action="{% url 'loaded_file_visulization' %}" method="post">   
+                        {% csrf_token %}                   
                         {% if diccionario %}
-                            <h5>Columnas</h5>
-                            <br>    
+                            <h5>Gráficos</h5>
+                                             
+                            <ul class="nav nav-pills flex-column">
+                                <li class="nav-item">
+                                    <input type="radio" id="lineas" name="grafico" value="lineas" checked>       
+                                    <label for="lineas">Gráfico de Líneas</label>  
+                                </li>                      
+                                <li class="nav-item">                      
+                                    <input type="radio" id="barras" name="grafico" value="barras">
+                                    <label for="barras">Gráfico de Barras</label>
+                                </li> 
+                                <li class="nav-item">                        
+                                    <input type="radio" id="pastel" name="grafico" value="pastel">
+                                    <label for="pastel">Gráfico de Pastel</label>
+                                </li>
+                                <li class="nav-item">                     
+                                    <input type="radio" id="bigotes" name="grafico" value="bigotes">
+                                    <label for="bigotes">Gráfico de Bigotes</label>
+                                </li>
+                            </ul>
+                            <br>                            
+                            <h5>Columnas</h5>                               
                             {% for header in diccionario.headers%}
                             <ul class="nav-pills flex-column" style="list-style-type: none; padding-left: 0;">
                                 <li class="nav-item">
-                                    <input type="checkbox" name="header_checkbox" id="header_{{forloop.counter}}" value="{{header}}">
+                                    <input type="checkbox" name="columnas" id="header_{{forloop.counter}}" value="{{header}}">
                                     {{header}}
                                 </li>
                             </ul>
                             {% endfor %}
                             <h5>Filas a usar</h5>
                             <input type="number" name="cant_filas_usar" id="cant_filas_usar" value="{{diccionario.cant_filas}}" max="{{diccionario.cant_filas}}" min="1">
+                            <br>
+                            <br>
+                            <button type="submit" class="btn btn-primary">Graficar</button>
+                            
                         {% endif %}
                     </form>
                 </div>
-                
             </div>
         </div>
     </body>
