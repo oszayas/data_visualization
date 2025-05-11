@@ -57,14 +57,17 @@ def loaded_file_visulization(request):
         numero_filas_elegidas = request.POST.get('cant_filas_usar')
         lista_datos = request.session.get('lista_datos',[])
         lista_encabezados = request.session.get('lista_encabezados',[])    
-                
-        if grafico_elegido == 'lineas':
-            index = lista_encabezados.index(columnas_elegidas[0])
+        val_x = []
+        for i in range(1,int(numero_filas_elegidas)+1):
+            val_x.append(i)  
+        index = lista_encabezados.index(columnas_elegidas[0]) 
+
+        if grafico_elegido == 'lineas':            
             datos_graficar = []
-            for i in lista_datos:
-                datos_graficar.append(i[index])
+            for i in range(int(numero_filas_elegidas)):
+                datos_graficar.append(lista_datos[i][index])            
             plt.figure(figsize = (8,4))
-            plt.plot([1,2,3,4,5],datos_graficar)                
+            plt.plot(val_x,datos_graficar)                
             plt.title(f"Datos {columnas_elegidas[0]}")
             plt.xlabel("Tiempo")
             plt.ylabel(f"{columnas_elegidas[0]}")
@@ -72,7 +75,20 @@ def loaded_file_visulization(request):
             grafico_html = mpld3.fig_to_html(plt.gcf())
             plt.close()        
             return render(request,'file_upload.html',{'grafico_html':grafico_html})
-        
+        elif grafico_elegido == 'barras':
+            datos_graficar = []
+            for i in range(int(numero_filas_elegidas)):
+                datos_graficar.append(lista_datos[i][index])
+                            
+            plt.figure(figsize=(8,4))
+            plt.bar(val_x,datos_graficar)
+            plt.title(f"Datos {columnas_elegidas[0]}")
+            plt.xlabel("Tiempo")
+            plt.ylabel(f"{columnas_elegidas[0]}")
+            plt.tight_layout()            
+            grafico_html = mpld3.fig_to_html(plt.gcf())
+            plt.close()        
+            return render(request,'file_upload.html',{'grafico_html':grafico_html})
         
         
 
