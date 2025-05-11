@@ -8,6 +8,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import io
 import base64
+import mpld3
 
 # Create your views here.
 def home(request):
@@ -48,6 +49,7 @@ def read_and_format_file(request):
         else:
             return HttpResponse("Error 400: El archivo no se cargó correctamente.")
 
+
 def loaded_file_visulization(request):
     if request.method == 'POST':
         grafico_elegido = request.POST.get('grafico')
@@ -66,16 +68,14 @@ def loaded_file_visulization(request):
             plt.title(f"Datos {columnas_elegidas[0]}")
             plt.xlabel("Tiempo")
             plt.ylabel(f"{columnas_elegidas[0]}")
-            plt.tight_layout()
-            buffer = io.BytesIO()
-            plt.savefig(buffer,format = 'png')
-            buffer.seek(0)
-            imagen = base64.b64encode(buffer.getvalue()).decode('utf-8')
+            plt.tight_layout()            
+            grafico_html = mpld3.fig_to_html(plt.gcf())
             plt.close()        
-            return render(request,'file_upload.html',{'imagen':imagen})
+            return render(request,'file_upload.html',{'grafico_html':grafico_html})
         
         
         
 
-        return HttpResponse("Todo Correcto")
+        
     
+        

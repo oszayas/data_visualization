@@ -92,6 +92,7 @@
                   name="columnas"
                   id="header_{{forloop.counter}}"
                   value="{{header}}"
+                  {% if forloop.first %}checked{% endif %}
                 />
                 {{header}}
               </li>

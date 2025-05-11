@@ -1,22 +1,41 @@
 <!DOCTYPE html>
 <html>
-<head>
+  <head>
     <title>Graficación</title>
-    <link rel="stylesheet" href="../static/css/bootstrap.min.css">
-</head>
-<body>
+    <link rel="stylesheet" href="../static/css/bootstrap.min.css" />
+    <script src="../static/html2canvas.min.js"></script>
+  </head>
+  <body>
     <div class="container-fluid">
-        <div class="row justify-content-center" style="padding-top: 50px;">            
-            <img class="col-auto" src="data:image/png;base64,{{ imagen }}" alt="Gráfico CSV" />
-        </div>
-        <div class="row justify-content-center" style="padding-top: 50px;">
-            <form action="{% url 'home' %}" class="col-auto" style="margin-left: 100px;">
-                <button type="submit" class="btn btn-danger col-auto">Atrás</button>
-            </form>
-            <form action="" class="col-auto">
-                <button class="btn btn-success col-auto"> Guardar</button>
-            </form>
-        </div>
+      <div class="row justify-content-center" style="padding-top: 50px">
+        <div id="grafico-container">{{grafico_html|safe}}</div>
+      </div>
+      <div class="row justify-content-center" style="padding-top: 50px">
+        <form
+          action="{% url 'home' %}"
+          class="col-auto"
+          style="margin-left: 100px"
+        >
+          <button type="submit" class="btn btn-danger col-auto">Atrás</button>
+        </form>
+
+        <button onclick="descargarPNG()" class="btn btn-success col-auto">
+          Guardar
+        </button>
+        <script>
+          function descargarPNG() {
+            console.log("SIuu");
+            html2canvas(document.querySelector("#grafico-container")).then(
+              (canvas) => {
+                const enlace = document.createElement("a");
+                enlace.download = "grafico-mpld3.png";
+                enlace.href = canvas.toDataURL("image/png");
+                enlace.click();
+              }
+            );
+          }
+        </script>
+      </div>
     </div>
-</body>
+  </body>
 </html>
