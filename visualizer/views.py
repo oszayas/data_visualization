@@ -10,9 +10,6 @@ import io
 import base64
 
 # Create your views here.
-
-
-
 def home(request):
          
     return render(request,'home.html')
@@ -44,7 +41,8 @@ def read_and_format_file(request):
                     for z in range(len(datos[i])):
                         lista_temp.append(float(datos[i][z]))
                     lista_datos.append(lista_temp)
-                request.session['lista_datos'] = lista_datos    
+                request.session['lista_datos'] = lista_datos
+                request.session['lista_encabezados'] = encabezados    
                 diccionario = {'headers':encabezados,'cant_filas':filas}
                 return render(request,'home.html',{'diccionario':diccionario})
         else:
@@ -56,22 +54,28 @@ def loaded_file_visulization(request):
         columnas_elegidas = request.POST.getlist('columnas')
         numero_filas_elegidas = request.POST.get('cant_filas_usar')
         lista_datos = request.session.get('lista_datos',[])
-        print(grafico_elegido)
-        print(columnas_elegidas)
-        print(numero_filas_elegidas)
-        print(lista_datos)
+        lista_encabezados = request.session.get('lista_encabezados',[])    
+                
+        if grafico_elegido == 'lineas':
+            index = lista_encabezados.index(columnas_elegidas[0])
+            datos_graficar = []
+            for i in lista_datos:
+                datos_graficar.append(i[index])
+            plt.figure(figsize = (8,4))
+            plt.plot([1,2,3,4,5],datos_graficar)                
+            plt.title(f"Datos {columnas_elegidas[0]}")
+            plt.xlabel("Tiempo")
+            plt.ylabel(f"{columnas_elegidas[0]}")
+            plt.tight_layout()
+            buffer = io.BytesIO()
+            plt.savefig(buffer,format = 'png')
+            buffer.seek(0)
+            imagen = base64.b64encode(buffer.getvalue()).decode('utf-8')
+            plt.close()        
+            return render(request,'file_upload.html',{'imagen':imagen})
+        
+        
         
 
         return HttpResponse("Todo Correcto")
-    """                            
-    plt.figure(figsize = (10,6))
-    plt.bar(encabezados,lista_datos[0])                
-    plt.title("Datos CSV")
-    plt.tight_layout()
-    buffer = io.BytesIO()
-    plt.savefig(buffer,format = 'png')
-    buffer.seek(0)
-    imagen = base64.b64encode(buffer.getvalue()).decode('utf-8')
-    plt.close()        
-    return render(request,'file_upload.html',{'imagen':imagen})
-    """ 
+    
