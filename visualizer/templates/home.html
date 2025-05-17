@@ -10,22 +10,33 @@
     <script>
       document.addEventListener('DOMContentLoaded', function() {
         const pieChartRadio = document.getElementById('pastel');
+        const lineChartRadio = document.getElementById('lineas');
+        const barChartRadio = document.getElementById('barras');
+        const boxChartRadio = document.getElementById('bigotes');
         const columnCheckboxes = document.querySelectorAll('input[name="columnas"]');
-        const ggplotCheckbox = document.getElementById('usar_ggplot');
+        const libreriaSelect = document.getElementById('libreria');
         
-        pieChartRadio.addEventListener('change', function() {
-          if(this.checked) {
+        // Función para manejar cambios en los radios de tipo de gráfico
+        function handleChartTypeChange() {
+          if(pieChartRadio.checked) {
             // Seleccionar todas las columnas cuando se elige gráfico de pastel
             columnCheckboxes.forEach(checkbox => {
               checkbox.checked = true;
             });
-            // Desactivar ggplot para gráfico de pastel (no compatible)
-            ggplotCheckbox.checked = false;
-            ggplotCheckbox.disabled = true;
+            // Forzar matplotlib para gráfico de pastel (el único compatible)
+            libreriaSelect.value = 'matplotlib';
+            libreriaSelect.disabled = true;
           } else {
-            ggplotCheckbox.disabled = false;
+            // Habilitar el selector de librerías para otros tipos de gráficos
+            libreriaSelect.disabled = false;
           }
-        });
+        }
+        
+        // Añadir event listeners a todos los radios de tipo de gráfico
+        pieChartRadio.addEventListener('change', handleChartTypeChange);
+        lineChartRadio.addEventListener('change', handleChartTypeChange);
+        barChartRadio.addEventListener('change', handleChartTypeChange);
+        boxChartRadio.addEventListener('change', handleChartTypeChange);
         
         // Deseleccionar automáticamente el gráfico de pastel si se deselecciona alguna columna
         columnCheckboxes.forEach(checkbox => {
@@ -33,10 +44,15 @@
             if(!this.checked && pieChartRadio.checked) {
               pieChartRadio.checked = false;
               document.getElementById('lineas').checked = true;
-              ggplotCheckbox.disabled = false;
+              // Disparar el evento change manualmente para actualizar el estado
+              const event = new Event('change');
+              lineChartRadio.dispatchEvent(event);
             }
           });
         });
+        
+        // Inicializar el estado al cargar la página
+        handleChartTypeChange();
       });
     </script>
   </head>
@@ -113,19 +129,16 @@
             </ul>
             <br />
             
-            <!-- Opción para usar ggplot -->
-            <div class="form-check mb-3">
-              <input
-                type="checkbox"
-                class="form-check-input"
-                id="usar_ggplot"
-                name="usar_ggplot"
-              />
-              <label class="form-check-label" for="usar_ggplot">
-                Usar ggplot (visualización mejorada)
-              </label>
+            <!-- Selector de librería de visualización -->
+            <div class="form-group mb-3">
+              <label for="libreria">Librería de visualización:</label>
+              <select class="form-control" id="libreria" name="libreria">
+                <option value="matplotlib">Matplotlib (básico)</option>
+                <option value="seaborn">Seaborn (estilo moderno)</option>
+                <option value="ggplot">ggplot (estilo académico)</option>
+              </select>
               <small class="form-text text-muted">
-                Nota: No disponible para gráficos de pastel
+                Seaborn ofrece gráficos más atractivos visualmente
               </small>
             </div>
             

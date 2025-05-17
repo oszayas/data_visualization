@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import io
 import base64
 import mpld3
+import seaborn as sns
 from plotnine import ggplot, aes, geom_line, geom_col, geom_boxplot, labs, theme, element_text, coord_flip
 from io import BytesIO
 
@@ -58,6 +59,7 @@ def loaded_file_visulization(request):
         grafico_elegido = request.POST.get('grafico')
         columnas_elegidas = request.POST.getlist('columnas')
         numero_filas_elegidas = request.POST.get('cant_filas_usar')
+        libreria = request.POST.get('libreria', 'matplotlib')
         lista_datos = request.session.get('lista_datos', [])
         lista_encabezados = request.session.get('lista_encabezados', [])    
         
@@ -71,38 +73,117 @@ def loaded_file_visulization(request):
         except ValueError as e:
             return HttpResponse(f"Error: {str(e)}")
         
-        # Crear DataFrame para ggplot
+        # Crear DataFrame para visualización
         data_dict = {'x': val_x}
         for idx, col in zip(indexes, columnas_elegidas):
             data_dict[col] = [lista_datos[i][idx] for i in range(int(numero_filas_elegidas))]
         df = pd.DataFrame(data_dict)
         
-        # Manejo especial para gráficos de pastel (ggplot no los maneja bien)
+        # Manejo especial para gráficos de pastel
         if grafico_elegido == 'pastel':
-            fig = plt.figure(figsize=(10, 8))
-            sumas = [sum([lista_datos[i][idx]] for i in range(int(numero_filas_elegidas))) for idx in indexes]
+            # Calcular sumas correctamente
+            sumas = []
+            for idx in indexes:
+                suma_columna = sum(lista_datos[i][idx] for i in range(int(numero_filas_elegidas)))
+                sumas.append(suma_columna)
             
-            patches, texts, autotexts = plt.pie(
-                sumas,
-                labels=columnas_elegidas,
-                autopct='%1.1f%%',
-                startangle=90,
-                colors=plt.cm.tab20.colors
-            )
+            # Verificar si hay datos para graficar
+            if sum(sumas) == 0:
+                return HttpResponse("Error: No hay datos válidos para generar el gráfico de pastel.")
             
-            plt.axis('equal')
-            for text in texts + autotexts:
-                text.set_fontsize(10)
+            # Crear figura según la librería seleccionada
+            if libreria == 'seaborn':
+                plt.figure(figsize=(10, 8))
+                sns.set_style("whitegrid")
+                
+                # Crear paleta de colores con Seaborn
+                palette = sns.color_palette("husl", len(columnas_elegidas))
+                
+                # Crear gráfico de pastel
+                plt.pie(
+                    sumas,
+                    labels=columnas_elegidas,
+                    autopct=lambda p: '{:.1f}%'.format(p) if p > 0 else '',
+                    startangle=90,
+                    colors=palette,
+                    wedgeprops={'linewidth': 1, 'edgecolor': 'white'},
+                    textprops={'fontsize': 12}
+                )
+                
+                plt.title('Distribución por Columnas\n(Seaborn Style)', pad=20)
+                plt.axis('equal')
+                
+                # Convertir a HTML
+                buf = BytesIO()
+                plt.savefig(buf, format='png', dpi=100, bbox_inches='tight')
+                buf.seek(0)
+                image_base64 = base64.b64encode(buf.read()).decode('utf-8')
+                grafico_html = f'<img src="data:image/png;base64,{image_base64}" style="max-width:100%;">'
+                plt.close()
+                buf.close()
+                
+                return render(request, 'file_upload.html', {'grafico_html': grafico_html})
             
-            grafico_html = mpld3.fig_to_html(fig)
-            plt.close(fig)
-            return render(request, 'file_upload.html', {'grafico_html': grafico_html})
+            else:
+                # Versión con matplotlib estándar
+                fig = plt.figure(figsize=(10, 8))
+                patches, texts, autotexts = plt.pie(
+                    sumas,
+                    labels=columnas_elegidas,
+                    autopct='%1.1f%%',
+                    startangle=90,
+                    colors=plt.cm.tab20.colors
+                )
+                
+                plt.axis('equal')
+                plt.title('Distribución por Columnas', pad=20)
+                for text in texts + autotexts:
+                    text.set_fontsize(10)
+                
+                grafico_html = mpld3.fig_to_html(fig)
+                plt.close(fig)
+                return render(request, 'file_upload.html', {'grafico_html': grafico_html})
+        
+        # Opción para usar Seaborn (excepto pastel)
+        if libreria == 'seaborn':
+            plots = []
+            for col in columnas_elegidas:
+                plt.figure(figsize=(10, 6))
+                sns.set_style("whitegrid")
+                
+                if grafico_elegido == 'lineas':
+                    sns.lineplot(data=df, x='x', y=col, linewidth=2.5, color='royalblue')
+                    plt.title(f"Gráfico de Líneas - {col} (Seaborn)", pad=15)
+                elif grafico_elegido == 'barras':
+                    sns.barplot(data=df, x='x', y=col, color='steelblue')
+                    plt.title(f"Gráfico de Barras - {col} (Seaborn)", pad=15)
+                elif grafico_elegido == 'bigotes':
+                    sns.boxplot(data=df, y=col, color='lightgreen')
+                    plt.title(f"Gráfico de Bigotes - {col} (Seaborn)", pad=15)
+                
+                plt.xlabel("Valores", labelpad=10)
+                plt.ylabel(col, labelpad=10)
+                plt.tight_layout()
+                
+                # Convertir a imagen base64
+                buf = BytesIO()
+                plt.savefig(buf, format='png', dpi=100)
+                buf.seek(0)
+                image_base64 = base64.b64encode(buf.read()).decode('utf-8')
+                plots.append(f'<img src="data:image/png;base64,{image_base64}" style="max-width:100%;">')
+                plt.close()
+                buf.close()
+            
+            if len(plots) == 1:
+                return render(request, 'file_upload.html', {'grafico_html': plots[0]})
+            else:
+                grafico_html = '<div style="display: flex; flex-direction: column; gap: 20px;">' + \
+                              ''.join([f'<div>{plot}</div>' for plot in plots]) + \
+                              '</div>'
+                return render(request, 'file_upload.html', {'grafico_html': grafico_html})
         
         # Opción para usar ggplot
-        usar_ggplot = request.POST.get('usar_ggplot', False)
-        
-        if usar_ggplot:
-            # Versión con ggplot/plotnine
+        elif libreria == 'ggplot':
             plots = []
             for col in columnas_elegidas:
                 if grafico_elegido == 'lineas':
@@ -141,8 +222,8 @@ def loaded_file_visulization(request):
                               '</div>'
                 return render(request, 'file_upload.html', {'grafico_html': grafico_html})
         
+        # Opción por defecto: matplotlib
         else:
-            # Versión original con matplotlib
             fig, axs = plt.subplots(len(columnas_elegidas), 1, 
                                    figsize=(8, 4 * len(columnas_elegidas)),
                                    squeeze=False)
