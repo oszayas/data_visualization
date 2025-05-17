@@ -7,6 +7,38 @@
       name="viewport"
       content="width=device-width, initial-scale=1, shrink-to-fit=no"
     />
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        const pieChartRadio = document.getElementById('pastel');
+        const columnCheckboxes = document.querySelectorAll('input[name="columnas"]');
+        const ggplotCheckbox = document.getElementById('usar_ggplot');
+        
+        pieChartRadio.addEventListener('change', function() {
+          if(this.checked) {
+            // Seleccionar todas las columnas cuando se elige gráfico de pastel
+            columnCheckboxes.forEach(checkbox => {
+              checkbox.checked = true;
+            });
+            // Desactivar ggplot para gráfico de pastel (no compatible)
+            ggplotCheckbox.checked = false;
+            ggplotCheckbox.disabled = true;
+          } else {
+            ggplotCheckbox.disabled = false;
+          }
+        });
+        
+        // Deseleccionar automáticamente el gráfico de pastel si se deselecciona alguna columna
+        columnCheckboxes.forEach(checkbox => {
+          checkbox.addEventListener('change', function() {
+            if(!this.checked && pieChartRadio.checked) {
+              pieChartRadio.checked = false;
+              document.getElementById('lineas').checked = true;
+              ggplotCheckbox.disabled = false;
+            }
+          });
+        });
+      });
+    </script>
   </head>
   <body>
     <nav class="navbar navbar-expand-lg navbar-light bg-info bg-gradient">
@@ -80,6 +112,23 @@
               </li>
             </ul>
             <br />
+            
+            <!-- Opción para usar ggplot -->
+            <div class="form-check mb-3">
+              <input
+                type="checkbox"
+                class="form-check-input"
+                id="usar_ggplot"
+                name="usar_ggplot"
+              />
+              <label class="form-check-label" for="usar_ggplot">
+                Usar ggplot (visualización mejorada)
+              </label>
+              <small class="form-text text-muted">
+                Nota: No disponible para gráficos de pastel
+              </small>
+            </div>
+            
             <h5>Columnas</h5>
             {% for header in diccionario.headers%}
             <ul
@@ -94,7 +143,7 @@
                   value="{{header}}"
                   {% if forloop.first %}checked{% endif %}
                 />
-                {{header}}
+                <label for="header_{{forloop.counter}}">{{header}}</label>
               </li>
             </ul>
             {% endfor %}
@@ -106,8 +155,9 @@
               value="{{diccionario.cant_filas}}"
               max="{{diccionario.cant_filas}}"
               min="1"
+              class="form-control"
+              style="width: 100px;"
             />
-            <br />
             <br />
             <button type="submit" class="btn btn-primary">Graficar</button>
 

@@ -7,8 +7,20 @@
   </head>
   <body>
     <div class="container-fluid">
-      <div class="row justify-content-center" style="padding-top: 50px">
-        <div id="grafico-container">{{grafico_html|safe}}</div>
+      <div class="row justify-content-center" style="padding-top: 70px">
+        {% if grafico_html%}
+          <div id="grafico-container">{{grafico_html|safe}}</div>
+        {% else %}
+        
+            {% for key, value in graficos_html.items %}
+                <div class="graph-container">
+                    <h2 class="graph-title">Gráfico {{ forloop.counter }}</h2>
+                    {{ value|safe }}
+                </div>
+            {% empty %}
+                <p>No se generaron gráficos. Por favor verifica tus datos.</p>
+            {% endfor %}
+        {% endif %}
       </div>
       <div class="row justify-content-center" style="padding-top: 50px">
         <form
@@ -24,7 +36,7 @@
         </button>
         <script>
           function descargarPNG() {
-            console.log("SIuu");
+            
             html2canvas(document.querySelector("#grafico-container")).then(
               (canvas) => {
                 const enlace = document.createElement("a");
