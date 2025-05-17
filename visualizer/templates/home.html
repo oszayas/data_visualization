@@ -3,10 +3,9 @@
   <head>
     <title>Home</title>
     <link rel="stylesheet" href="../static/css/bootstrap.min.css" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1, shrink-to-fit=no"
-    />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <!-- Incluir Plotly.js desde CDN -->
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     <script>
       document.addEventListener('DOMContentLoaded', function() {
         const pieChartRadio = document.getElementById('pastel');
@@ -23,12 +22,58 @@
             columnCheckboxes.forEach(checkbox => {
               checkbox.checked = true;
             });
-            // Forzar matplotlib para gráfico de pastel (el único compatible)
-            libreriaSelect.value = 'matplotlib';
-            libreriaSelect.disabled = true;
+            
+            // Actualizar las opciones del selector de librerías
+            updateLibraryOptions();
           } else {
             // Habilitar el selector de librerías para otros tipos de gráficos
             libreriaSelect.disabled = false;
+          }
+        }
+        
+        // Función para actualizar las opciones de librerías según el tipo de gráfico
+        function updateLibraryOptions() {
+          const selectedChart = document.querySelector('input[name="grafico"]:checked').value;
+          const currentLibrary = libreriaSelect.value;
+          
+          // Guardar todas las opciones posibles
+          const allOptions = {
+            'matplotlib': 'Matplotlib (básico)',
+            'seaborn': 'Seaborn (estilo moderno)',
+            'ggplot': 'ggplot (estilo académico)',
+            'plotly': 'Plotly (interactivo)'
+          };
+          
+          // Limpiar las opciones actuales
+          libreriaSelect.innerHTML = '';
+          
+          // Para gráfico de pastel, solo permitir matplotlib y plotly
+          if(selectedChart === 'pastel') {
+            const allowedLibraries = ['matplotlib', 'plotly'];
+            allowedLibraries.forEach(lib => {
+              const option = document.createElement('option');
+              option.value = lib;
+              option.textContent = allOptions[lib];
+              libreriaSelect.appendChild(option);
+            });
+            
+            // Si la librería actual no está permitida, cambiar a matplotlib
+            if(!allowedLibraries.includes(currentLibrary)) {
+              libreriaSelect.value = 'matplotlib';
+            }
+          } else {
+            // Para otros gráficos, permitir todas las librerías
+            Object.entries(allOptions).forEach(([value, text]) => {
+              const option = document.createElement('option');
+              option.value = value;
+              option.textContent = text;
+              libreriaSelect.appendChild(option);
+            });
+            
+            // Restaurar la selección anterior si existe
+            if(currentLibrary) {
+              libreriaSelect.value = currentLibrary;
+            }
           }
         }
         
@@ -52,6 +97,7 @@
         });
         
         // Inicializar el estado al cargar la página
+        updateLibraryOptions();
         handleChartTypeChange();
       });
     </script>
@@ -136,9 +182,10 @@
                 <option value="matplotlib">Matplotlib (básico)</option>
                 <option value="seaborn">Seaborn (estilo moderno)</option>
                 <option value="ggplot">ggplot (estilo académico)</option>
+                <option value="plotly">Plotly (interactivo)</option>
               </select>
               <small class="form-text text-muted">
-                Seaborn ofrece gráficos más atractivos visualmente
+                Plotly ofrece gráficos interactivos con zoom y tooltips
               </small>
             </div>
             

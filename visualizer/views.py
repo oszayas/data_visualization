@@ -10,6 +10,8 @@ import io
 import base64
 import mpld3
 import seaborn as sns
+import plotly.express as px
+import plotly.io as pio
 from plotnine import ggplot, aes, geom_line, geom_col, geom_boxplot, labs, theme, element_text, coord_flip
 from io import BytesIO
 
@@ -124,6 +126,26 @@ def loaded_file_visulization(request):
                 
                 return render(request, 'file_upload.html', {'grafico_html': grafico_html})
             
+            elif libreria == 'plotly':
+                # Versión con Plotly
+                fig = px.pie(
+                    values=sumas,
+                    names=columnas_elegidas,
+                    title='Distribución por Columnas (Plotly)',
+                    color_discrete_sequence=px.colors.qualitative.Plotly
+                )
+                fig.update_traces(
+                    textposition='inside',
+                    textinfo='percent+label',
+                    marker=dict(line=dict(color='white', width=1)))
+                fig.update_layout(
+                    uniformtext_minsize=12,
+                    uniformtext_mode='hide'
+                )
+                
+                grafico_html = fig.to_html(full_html=False, include_plotlyjs='cdn')
+                return render(request, 'file_upload.html', {'grafico_html': grafico_html})
+            
             else:
                 # Versión con matplotlib estándar
                 fig = plt.figure(figsize=(10, 8))
@@ -144,8 +166,48 @@ def loaded_file_visulization(request):
                 plt.close(fig)
                 return render(request, 'file_upload.html', {'grafico_html': grafico_html})
         
+        # Opción para usar Plotly (excepto pastel)
+        if libreria == 'plotly':
+            if len(columnas_elegidas) == 1:
+                # Gráfico simple para una sola columna
+                col = columnas_elegidas[0]
+                if grafico_elegido == 'lineas':
+                    fig = px.line(df, x='x', y=col, title=f'Gráfico de Líneas - {col}')
+                elif grafico_elegido == 'barras':
+                    fig = px.bar(df, x='x', y=col, title=f'Gráfico de Barras - {col}')
+                elif grafico_elegido == 'bigotes':
+                    fig = px.box(df, y=col, title=f'Gráfico de Bigotes - {col}')
+                
+                grafico_html = fig.to_html(full_html=False, include_plotlyjs='cdn')
+                return render(request, 'file_upload.html', {'grafico_html': grafico_html})
+            else:
+                # Gráficos múltiples en subplots
+                from plotly.subplots import make_subplots
+                import plotly.graph_objects as go
+                
+                fig = make_subplots(rows=len(columnas_elegidas), cols=1, subplot_titles=columnas_elegidas)
+                
+                for i, col in enumerate(columnas_elegidas, 1):
+                    if grafico_elegido == 'lineas':
+                        trace = go.Scatter(x=df['x'], y=df[col], name=col)
+                    elif grafico_elegido == 'barras':
+                        trace = go.Bar(x=df['x'], y=df[col], name=col)
+                    elif grafico_elegido == 'bigotes':
+                        trace = go.Box(y=df[col], name=col)
+                    
+                    fig.add_trace(trace, row=i, col=1)
+                
+                fig.update_layout(
+                    height=300 * len(columnas_elegidas),
+                    showlegend=False,
+                    title_text="Visualización de Datos (Plotly)"
+                )
+                
+                grafico_html = fig.to_html(full_html=False, include_plotlyjs='cdn')
+                return render(request, 'file_upload.html', {'grafico_html': grafico_html})
+        
         # Opción para usar Seaborn (excepto pastel)
-        if libreria == 'seaborn':
+        elif libreria == 'seaborn':
             plots = []
             for col in columnas_elegidas:
                 plt.figure(figsize=(10, 6))
