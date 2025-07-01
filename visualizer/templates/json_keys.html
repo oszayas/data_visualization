@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>JSON Keys Viewer</title>
+    <style>
+        .record {
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+        .keys {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 3px;
+        }
+        .error {
+            color: red;
+            padding: 10px;
+            background-color: #ffeeee;
+            border: 1px solid red;
+        }
+    </style>
+</head>
+<body>
+    <h1>Visualizador de Claves JSON</h1>
+    
+    {% if error %}
+        <div class="error">
+            <strong>Error:</strong> {{ error }}
+        </div>
+    {% endif %}
+    
+    {% for result in results %}
+        <div class="record">
+            <h3>Registro ID: {{ result.id }}</h3>
+            <p>Fecha: {{ result.fecha }}</p>
+            
+            <h4>Header:</h4>
+            <div class="keys">
+                <strong>Keys:</strong> {{ result.header_keys|join:", " }}
+            </div>
+            <pre>{{ result.header|pprint }}</pre>
+            
+            <h4>Metadata:</h4>
+            <div class="keys">
+                <strong>Keys:</strong> {{ result.metadata_keys|join:", " }}
+            </div>
+            <pre>{{ result.metadata|pprint }}</pre>
+        </div>
+    {% empty %}
+        <p>No se encontraron registros con datos JSON.</p>
+    {% endfor %}
+</body>
+</html>

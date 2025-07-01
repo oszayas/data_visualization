@@ -1,312 +1,340 @@
-from django.shortcuts import render, HttpResponse
+from django.shortcuts import render, HttpResponse,redirect
 from django.conf import settings
-import re
+from django.urls import reverse
+from .utils import (
+    get_file_extension, save_temp_file, remove_temp_file, 
+    create_dataframe, convert_to_float, validate_columns, SUPPORTED_FILE_TYPES
+)
+from .visualization import PieChartVisualizer ,ScatterPlotVisualizer,BasicChartVisualizer,HeatMapVisualizer # Import other visualizers as needed
 import pandas as pd
-import os
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-import io
-import base64
-import mpld3
-import seaborn as sns
-import plotly.express as px
-import plotly.io as pio
-from plotnine import ggplot, aes, geom_line, geom_col, geom_boxplot, labs, theme, element_text, coord_flip
+import json
 from io import BytesIO
+import base64
+import matplotlib.pyplot as plt
+from visualizer.models import ApiRegistros
+from django.views.decorators.http import require_GET
+from django.http import JsonResponse
+from collections import Counter
+import numpy as np
 
-# Create your views here.
 def home(request):
     return render(request, 'home.html')
 
-def read_and_format_file(request):    
-    '''Función para leer y obtener datos del archivo'''
-    if request.method == 'POST':        
-        if 'archivo-cargado' in request.FILES:
-            file = request.FILES.get('archivo-cargado')
-            str_file = str(request.FILES.get('archivo-cargado'))
-            file_extension = re.search(r'\.([^.]*)$', str_file).group(1)
-
-            if file_extension == 'csv':
-                temp_path = os.path.join(settings.MEDIA_ROOT, 'temp_csv')
-                with open(temp_path, 'wb+') as destination:
-                    for chunck in file.chunks():
-                        destination.write(chunck)
-                
-                data = pd.read_csv(temp_path, header=None, encoding='latin1')                
-                
-                datos = data.values.tolist()
-                encabezados = datos[0]
-                filas = len(datos) - 1                
-                lista_datos = []
-                
-                for i in range(1, filas + 1):
-                    lista_temp = []
-                    for z in range(len(datos[i])):
-                        try:
-                            lista_temp.append(float(datos[i][z]))
-                        except ValueError:
-                            lista_temp.append(0.0)  # Manejo de valores no numéricos
-                    lista_datos.append(lista_temp)
-                
-                request.session['lista_datos'] = lista_datos
-                request.session['lista_encabezados'] = encabezados    
-                diccionario = {'headers': encabezados, 'cant_filas': filas}
-                return render(request, 'home.html', {'diccionario': diccionario})
+def read_and_format_file(request):
+    if request.method != 'POST' or 'archivo-cargado' not in request.FILES:
+        return HttpResponse("Error 400: El archivo no se cargó correctamente.")
+    
+    file = request.FILES['archivo-cargado']
+    file_extension = get_file_extension(str(file))
+    
+    if file_extension not in SUPPORTED_FILE_TYPES:
+        return HttpResponse("Error 400: Formato de archivo no soportado. Use CSV o JSON.")
+    
+    temp_path = save_temp_file(file, file_extension)
+    
+    try:
+        if file_extension == 'csv':
+            data, headers = process_csv_file(temp_path)
         else:
-            return HttpResponse("Error 400: El archivo no se cargó correctamente.")
+            data, headers = process_json_file(temp_path)
+        
+        # Guardar datos en la sesión
+        request.session['lista_datos'] = data
+        request.session['lista_encabezados'] = headers
+        
+        context = {
+            'diccionario': {
+                'headers': headers,
+                'cant_filas': len(data),
+                'visualization_url': reverse('loaded_file_visulization')
+            }
+        }
+        return render(request, 'home.html', context)
+    
+    except Exception as e:
+        return HttpResponse(f"Error al procesar el archivo: {str(e)}")
+    finally:
+        remove_temp_file(temp_path)
 
-def loaded_file_visulization(request):
+def process_csv_file(file_path):
+    """Procesa un archivo CSV y devuelve datos y encabezados."""
+    data = pd.read_csv(file_path, header=None, encoding='latin1').values.tolist()
+    
+    if not data:
+        raise ValueError("El archivo CSV está vacío.")
+    
+    headers = data[0]
+    rows = [row for row in data[1:] if row]  # Filtrar filas vacías
+    
+    processed_data = []
+    for row in rows:
+        processed_row = [convert_to_float(value) for value in row]
+        processed_data.append(processed_row)
+    
+    return processed_data, headers
+
+def process_json_file(file_path):
+    """Procesa un archivo JSON y devuelve datos y encabezados."""
+    with open(file_path, 'r', encoding='utf-8') as f:
+        json_data = json.load(f)
+    
+    if isinstance(json_data, list):
+        df = pd.DataFrame(json_data)
+    elif isinstance(json_data, dict):
+        df = pd.DataFrame.from_dict(json_data, orient='index').T
+    else:
+        raise ValueError("Formato JSON no soportado.")
+    
+    data = df.values.tolist()
+    headers = df.columns.tolist()
+    
+    if not headers:
+        headers = [f"Columna_{i}" for i in range(len(data[0]))]
+    
+    processed_data = []
+    for row in data:
+        processed_row = [convert_to_float(value) for value in row]
+        processed_data.append(processed_row)
+    
+    return processed_data, headers
+
+def loaded_file_visualization(request):
+    if request.method != 'POST':
+        return HttpResponse("Método no permitido")
+    
+    required_params = ['grafico', 'columnas', 'cant_filas_usar']
+    if not all(param in request.POST for param in required_params):
+        return HttpResponse("Parámetros faltantes en la solicitud")
+    
+    graph_type = request.POST['grafico']
+    columns = request.POST.getlist('columnas')
+    num_rows = request.POST['cant_filas_usar']
+    library = request.POST.get('libreria', 'matplotlib')
+    
+    data = request.session.get('lista_datos', [])
+    headers = request.session.get('lista_encabezados', [])
+    
+    if not data or not headers:
+        return HttpResponse("Error: No hay datos cargados para graficar.")
+    
+    # Validación de columnas para gráficos especiales
+    if graph_type in ['dispersion', 'calor'] and len(columns) < 2:
+        return HttpResponse(f"Error: Para gráficos de {graph_type} se necesitan al menos 2 columnas seleccionadas.")
+    
+    # Seleccionar el visualizador adecuado según el tipo de gráfico
+    if graph_type == 'pastel':
+        visualizer = PieChartVisualizer(request, graph_type, columns, num_rows, data, headers)
+    elif graph_type == 'dispersion':
+        visualizer = ScatterPlotVisualizer(request, graph_type, columns, num_rows, data, headers)
+    elif graph_type == 'calor':
+        visualizer = HeatMapVisualizer(request, graph_type, columns, num_rows, data, headers)
+    elif graph_type in ['lineas', 'barras', 'bigotes']:
+        visualizer = BasicChartVisualizer(request, graph_type, columns, num_rows, data, headers)
+    else:
+        return HttpResponse("Tipo de gráfico no soportado")
+    
+    graph_html = visualizer.render()
+    return render(request, 'file_upload.html', {'grafico_html': graph_html})
+
+def extraer_base_datos(request):
+    context = {}
+    
     if request.method == 'POST':
-        grafico_elegido = request.POST.get('grafico')
-        columnas_elegidas = request.POST.getlist('columnas')
-        numero_filas_elegidas = request.POST.get('cant_filas_usar')
-        libreria = request.POST.get('libreria', 'matplotlib')
-        lista_datos = request.session.get('lista_datos', [])
-        lista_encabezados = request.session.get('lista_encabezados', [])    
+        chart_type = request.POST.get('chart_type', 'lineas')
+        data_type = request.POST.get('data_type', 'fechas')
         
-        if not lista_datos or not lista_encabezados:
-            return HttpResponse("Error: No hay datos cargados para graficar.")
+        # Obtener y procesar registros
+        records = ApiRegistros.objects.all()
+        results = [json.loads(record.metadata) for record in records]
         
-        val_x = list(range(1, int(numero_filas_elegidas) + 1))
+        # Procesar autores y fechas
+        autores = []
+        fechas = []
         
-        try:
-            indexes = [lista_encabezados.index(col) for col in columnas_elegidas]
-        except ValueError as e:
-            return HttpResponse(f"Error: {str(e)}")
-        
-        # Crear DataFrame para visualización
-        data_dict = {'x': val_x}
-        for idx, col in zip(indexes, columnas_elegidas):
-            data_dict[col] = [lista_datos[i][idx] for i in range(int(numero_filas_elegidas))]
-        df = pd.DataFrame(data_dict)
-        
-        # Manejo especial para gráficos de pastel
-        if grafico_elegido == 'pastel':
-            # Calcular sumas correctamente
-            sumas = []
-            for idx in indexes:
-                suma_columna = sum(lista_datos[i][idx] for i in range(int(numero_filas_elegidas)))
-                sumas.append(suma_columna)
+        for result in results:
+            if not result:
+                continue
+                
+            # Procesar autores
+            autores_data = result.get("_map", {}).get('creator', [])
+            if autores_data:
+                if isinstance(autores_data[0], list):
+                    autores.extend([autor.strip() for sublist in autores_data for autor in sublist if autor.strip()])
+                else:
+                    autores.extend([autor.strip() for autor in autores_data if autor.strip()])
             
-            # Verificar si hay datos para graficar
-            if sum(sumas) == 0:
-                return HttpResponse("Error: No hay datos válidos para generar el gráfico de pastel.")
-            
-            # Crear figura según la librería seleccionada
-            if libreria == 'seaborn':
-                plt.figure(figsize=(10, 8))
-                sns.set_style("whitegrid")
-                
-                # Crear paleta de colores con Seaborn
-                palette = sns.color_palette("husl", len(columnas_elegidas))
-                
-                # Crear gráfico de pastel
-                plt.pie(
-                    sumas,
-                    labels=columnas_elegidas,
-                    autopct=lambda p: '{:.1f}%'.format(p) if p > 0 else '',
-                    startangle=90,
-                    colors=palette,
-                    wedgeprops={'linewidth': 1, 'edgecolor': 'white'},
-                    textprops={'fontsize': 12}
-                )
-                
-                plt.title('Distribución por Columnas\n(Seaborn Style)', pad=20)
-                plt.axis('equal')
-                
-                # Convertir a HTML
-                buf = BytesIO()
-                plt.savefig(buf, format='png', dpi=100, bbox_inches='tight')
-                buf.seek(0)
-                image_base64 = base64.b64encode(buf.read()).decode('utf-8')
-                grafico_html = f'<img src="data:image/png;base64,{image_base64}" style="max-width:100%;">'
-                plt.close()
-                buf.close()
-                
-                return render(request, 'file_upload.html', {'grafico_html': grafico_html})
-            
-            elif libreria == 'plotly':
-                # Versión con Plotly
-                fig = px.pie(
-                    values=sumas,
-                    names=columnas_elegidas,
-                    title='Distribución por Columnas (Plotly)',
-                    color_discrete_sequence=px.colors.qualitative.Plotly
-                )
-                fig.update_traces(
-                    textposition='inside',
-                    textinfo='percent+label',
-                    marker=dict(line=dict(color='white', width=1)))
-                fig.update_layout(
-                    uniformtext_minsize=12,
-                    uniformtext_mode='hide'
-                )
-                
-                grafico_html = fig.to_html(full_html=False, include_plotlyjs='cdn')
-                return render(request, 'file_upload.html', {'grafico_html': grafico_html})
-            
-            else:
-                # Versión con matplotlib estándar
-                fig = plt.figure(figsize=(10, 8))
-                patches, texts, autotexts = plt.pie(
-                    sumas,
-                    labels=columnas_elegidas,
-                    autopct='%1.1f%%',
-                    startangle=90,
-                    colors=plt.cm.tab20.colors
-                )
-                
-                plt.axis('equal')
-                plt.title('Distribución por Columnas', pad=20)
-                for text in texts + autotexts:
-                    text.set_fontsize(10)
-                
-                grafico_html = mpld3.fig_to_html(fig)
-                plt.close(fig)
-                return render(request, 'file_upload.html', {'grafico_html': grafico_html})
+            # Procesar fechas
+            fecha_data = result.get("_map", {}).get('date', [])
+            if fecha_data:
+                fechas.append(fecha_data)
         
-        # Opción para usar Plotly (excepto pastel)
-        if libreria == 'plotly':
-            if len(columnas_elegidas) == 1:
-                # Gráfico simple para una sola columna
-                col = columnas_elegidas[0]
-                if grafico_elegido == 'lineas':
-                    fig = px.line(df, x='x', y=col, title=f'Gráfico de Líneas - {col}')
-                elif grafico_elegido == 'barras':
-                    fig = px.bar(df, x='x', y=col, title=f'Gráfico de Barras - {col}')
-                elif grafico_elegido == 'bigotes':
-                    fig = px.box(df, y=col, title=f'Gráfico de Bigotes - {col}')
-                
-                grafico_html = fig.to_html(full_html=False, include_plotlyjs='cdn')
-                return render(request, 'file_upload.html', {'grafico_html': grafico_html})
-            else:
-                # Gráficos múltiples en subplots
-                from plotly.subplots import make_subplots
-                import plotly.graph_objects as go
-                
-                fig = make_subplots(rows=len(columnas_elegidas), cols=1, subplot_titles=columnas_elegidas)
-                
-                for i, col in enumerate(columnas_elegidas, 1):
-                    if grafico_elegido == 'lineas':
-                        trace = go.Scatter(x=df['x'], y=df[col], name=col)
-                    elif grafico_elegido == 'barras':
-                        trace = go.Bar(x=df['x'], y=df[col], name=col)
-                    elif grafico_elegido == 'bigotes':
-                        trace = go.Box(y=df[col], name=col)
-                    
-                    fig.add_trace(trace, row=i, col=1)
-                
-                fig.update_layout(
-                    height=300 * len(columnas_elegidas),
-                    showlegend=False,
-                    title_text="Visualización de Datos (Plotly)"
-                )
-                
-                grafico_html = fig.to_html(full_html=False, include_plotlyjs='cdn')
-                return render(request, 'file_upload.html', {'grafico_html': grafico_html})
+        # Procesamiento de fechas
+        diccionario_fechas = {}
+        for fecha in fechas:
+            if fecha and len(fecha) > 0:
+                year = fecha[0].split('-')[0]
+                diccionario_fechas[year] = diccionario_fechas.get(year, 0) + 1
         
-        # Opción para usar Seaborn (excepto pastel)
-        elif libreria == 'seaborn':
-            plots = []
-            for col in columnas_elegidas:
-                plt.figure(figsize=(10, 6))
-                sns.set_style("whitegrid")
-                
-                if grafico_elegido == 'lineas':
-                    sns.lineplot(data=df, x='x', y=col, linewidth=2.5, color='royalblue')
-                    plt.title(f"Gráfico de Líneas - {col} (Seaborn)", pad=15)
-                elif grafico_elegido == 'barras':
-                    sns.barplot(data=df, x='x', y=col, color='steelblue')
-                    plt.title(f"Gráfico de Barras - {col} (Seaborn)", pad=15)
-                elif grafico_elegido == 'bigotes':
-                    sns.boxplot(data=df, y=col, color='lightgreen')
-                    plt.title(f"Gráfico de Bigotes - {col} (Seaborn)", pad=15)
-                
-                plt.xlabel("Valores", labelpad=10)
-                plt.ylabel(col, labelpad=10)
-                plt.tight_layout()
-                
-                # Convertir a imagen base64
-                buf = BytesIO()
-                plt.savefig(buf, format='png', dpi=100)
-                buf.seek(0)
-                image_base64 = base64.b64encode(buf.read()).decode('utf-8')
-                plots.append(f'<img src="data:image/png;base64,{image_base64}" style="max-width:100%;">')
-                plt.close()
-                buf.close()
-            
-            if len(plots) == 1:
-                return render(request, 'file_upload.html', {'grafico_html': plots[0]})
-            else:
-                grafico_html = '<div style="display: flex; flex-direction: column; gap: 20px;">' + \
-                              ''.join([f'<div>{plot}</div>' for plot in plots]) + \
-                              '</div>'
-                return render(request, 'file_upload.html', {'grafico_html': grafico_html})
+        # Procesamiento de autores
+        contador_autores = Counter(autores)
+        autores_ordenados = sorted(contador_autores.items(), key=lambda x: x[1], reverse=True)
         
-        # Opción para usar ggplot
-        elif libreria == 'ggplot':
-            plots = []
-            for col in columnas_elegidas:
-                if grafico_elegido == 'lineas':
-                    p = (ggplot(df, aes(x='x', y=col)) 
-                         + geom_line(color='blue') 
-                         + labs(title=f"Datos {col}", x="Tiempo", y=col) 
-                         + theme(axis_text_x=element_text(rotation=45, hjust=1)))
-                
-                elif grafico_elegido == 'barras':
-                    p = (ggplot(df, aes(x='x', y=col)) 
-                         + geom_col(fill='steelblue') 
-                         + labs(title=f"Datos {col}", x="Valores", y=col) 
-                         + theme(axis_text_x=element_text(rotation=45, hjust=1)))
-                
-                elif grafico_elegido == 'bigotes':
-                    df_melted = df.melt(id_vars=['x'], value_vars=[col], 
-                                       var_name='variable', value_name='value')
-                    p = (ggplot(df_melted, aes(x='variable', y='value')) 
-                         + geom_boxplot(fill='lightgreen') 
-                         + labs(title=f"Datos {col}", x="", y=col) 
-                         + coord_flip())
-                
-                # Convertir a imagen base64
-                buf = BytesIO()
-                p.save(buf, format='png', dpi=100, verbose=False)
-                buf.seek(0)
-                image_base64 = base64.b64encode(buf.read()).decode('utf-8')
-                plots.append(f'<img src="data:image/png;base64,{image_base64}" style="max-width:100%;">')
-                buf.close()
-            
-            if len(plots) == 1:
-                return render(request, 'file_upload.html', {'grafico_html': plots[0]})
-            else:
-                grafico_html = '<div style="display: flex; flex-direction: column; gap: 20px;">' + \
-                              ''.join([f'<div>{plot}</div>' for plot in plots]) + \
-                              '</div>'
-                return render(request, 'file_upload.html', {'grafico_html': grafico_html})
-        
-        # Opción por defecto: matplotlib
+        # Preparar datos según el tipo seleccionado
+        if data_type == 'fechas':
+            sorted_data = sorted(diccionario_fechas.items())
+            labels = [item[0] for item in sorted_data]
+            values = [item[1] for item in sorted_data]
+            title_prefix = "Publicaciones por Año"
+            x_label = "Año"
+            table_header = ("Año", "Publicaciones")
         else:
-            fig, axs = plt.subplots(len(columnas_elegidas), 1, 
-                                   figsize=(8, 4 * len(columnas_elegidas)),
-                                   squeeze=False)
-            axs = axs.flatten()
+            top_autores = autores_ordenados[:15]  # Mostrar top 15 autores
+            labels = [item[0] for item in top_autores]
+            values = [item[1] for item in top_autores]
+            title_prefix = "Autores más Productivos"
+            x_label = "Autor"
+            table_header = ("Autor", "Publicaciones")
+            sorted_data = top_autores
+        
+        # Generar el gráfico
+        plt.figure(figsize=(12, 7))
+        
+        if chart_type == 'lineas':
+            plt.plot(labels, values, marker='o', linestyle='-', color='b')
+        elif chart_type == 'barras':
+            plt.bar(labels, values, color='b')
+        elif chart_type == 'pastel':
+            plt.pie(values, labels=labels, autopct='%1.1f%%')
+        elif chart_type == 'bigotes':
+            # Preparar datos para el boxplot
+            if data_type == 'fechas':
+                # Boxplot de distribución de años
+                try:
+                    years = [int(year) for year in diccionario_fechas.keys()]
+                    plt.boxplot([years], 
+                            vert=True, 
+                            patch_artist=True,
+                            boxprops=dict(facecolor='lightblue'),
+                            medianprops=dict(color='red'))
+                    plt.title('Distribución de Años de Publicación')
+                    plt.ylabel('Año')
+                    plt.xticks([1], ['Años'])
+                except ValueError as e:
+                    plt.text(0.5, 0.5, 'Error: Datos de año no válidos', 
+                            ha='center', va='center')
+                    plt.title('Diagrama de Bigotes - Error')
+            else:
+                # Boxplot de distribución de publicaciones por autor
+                all_counts = [count for _, count in autores_ordenados]
+                plt.boxplot([all_counts],
+                        vert=True,
+                        patch_artist=True,
+                        boxprops=dict(facecolor='lightgreen'),
+                        medianprops=dict(color='red'))
+                plt.title('Distribución de Publicaciones por Autor')
+                plt.ylabel('Publicaciones')
+                plt.xticks([1], ['Publicaciones'])
+            plt.grid(True, axis='y')
+        elif chart_type == 'calor':
+            plt.figure(figsize=(12, 8))
             
-            for i, (ax, idx, col) in enumerate(zip(axs, indexes, columnas_elegidas)):
-                datos = [lista_datos[row][idx] for row in range(int(numero_filas_elegidas))]
-                
-                if grafico_elegido == 'lineas':
-                    ax.plot(val_x, datos)
-                elif grafico_elegido == 'barras':
-                    ax.bar(val_x, datos)
-                elif grafico_elegido == 'bigotes':
-                    ax.boxplot(datos)
-                    ax.set_xticks([])
-                
-                ax.set_title(f"Datos {col}")
-                ax.set_xlabel("Valores")
-                ax.set_ylabel(col)
+            if data_type == 'fechas':
+                # Heatmap de publicaciones por año/mes
+                try:
+                    # Procesar fechas para obtener año y mes
+                    year_month_counts = {}
+                    for fecha in fechas:
+                        if fecha and len(fecha) > 0:
+                            parts = fecha[0].split('-')
+                            if len(parts) >= 2:
+                                year_month = f"{parts[0]}-{parts[1]}"
+                                year_month_counts[year_month] = year_month_counts.get(year_month, 0) + 1
+                    
+                    if not year_month_counts:
+                        raise ValueError("No hay datos de fecha válidos")
+                    
+                    # Crear matriz para el heatmap
+                    years = sorted({ym.split('-')[0] for ym in year_month_counts.keys()})
+                    months = [f"{m:02d}" for m in range(1, 13)]  # Meses 01-12
+                    heatmap_data = np.zeros((len(years), len(months)))
+                    
+                    for ym, count in year_month_counts.items():
+                        year, month = ym.split('-')
+                        y_idx = years.index(year)
+                        m_idx = months.index(month)
+                        heatmap_data[y_idx, m_idx] = count
+                    
+                    # Crear heatmap
+                    plt.imshow(heatmap_data, cmap='YlOrRd', aspect='auto')
+                    plt.colorbar(label='Número de Publicaciones')
+                    
+                    # Configurar ejes
+                    plt.xticks(np.arange(len(months)), months)
+                    plt.yticks(np.arange(len(years)), years)
+                    plt.xlabel('Cantidad')
+                    plt.ylabel('Año')
+                    plt.title('Mapa de Calor: Publicaciones por Año y Mes')
+                    
+                except Exception as e:
+                    plt.text(0.5, 0.5, f'Error en datos: {str(e)}', 
+                            ha='center', va='center')
+                    plt.title('Mapa de Calor - Error')
+            
+            else:
+                # Heatmap de co-autoría (ejemplo simplificado)
+                try:
+                    # Esto es un ejemplo - necesitarías lógica más compleja para co-autoría real
+                    top_autores = [autor for autor, _ in autores_ordenados[:10]]
+                    coautor_matrix = np.random.randint(0, 10, size=(10, 10))  # Datos de ejemplo
+                    
+                    # Hacer la diagonal 0 para mejor visualización
+                    np.fill_diagonal(coautor_matrix, 0)
+                    
+                    plt.imshow(coautor_matrix, cmap='Blues', aspect='auto')
+                    plt.colorbar(label='Colaboraciones')
+                    
+                    # Configurar ejes
+                    plt.xticks(np.arange(len(top_autores)), top_autores, rotation=45, ha='right')
+                    plt.yticks(np.arange(len(top_autores)), top_autores)
+                    plt.title('Mapa de Calor: Colaboraciones entre Autores (Ejemplo)')
+                    
+                except Exception as e:
+                    plt.text(0.5, 0.5, 'Datos insuficientes para mapa de colaboraciones', 
+                            ha='center', va='center')
+                    plt.title('Mapa de Calor - Información no disponible')
             
             plt.tight_layout()
-            grafico_html = mpld3.fig_to_html(fig)
-            plt.close(fig)
-            return render(request, 'file_upload.html', {'grafico_html': grafico_html})
+    
+    
+        
+        plt.title(f'{title_prefix} ({chart_type.capitalize()})')
+        plt.xlabel(x_label)
+        plt.ylabel('Cantidad')
+        plt.grid(True)
+        plt.xticks(rotation=45 if data_type == 'autores' else 0)
+        plt.tight_layout()
+        
+        # Convertir gráfico a base64
+        buffer = BytesIO()
+        plt.savefig(buffer, format='png', bbox_inches='tight')
+        buffer.seek(0)
+        graphic = base64.b64encode(buffer.getvalue()).decode('utf-8')
+        plt.close()
+        
+        # Preparar datos para la tabla
+        table_rows = [(str(item[0]), str(item[1])) for item in sorted_data]
+        total = sum(values)
+        
+        context = {
+            'graphic': graphic,
+            'table_header': table_header,
+            'table_rows': table_rows,
+            'total': total,
+            'total_registros': len(results),
+            'autores_publicaciones': autores_ordenados,
+            'selected_data_type': data_type,
+            'selected_chart_type': chart_type,
+            'show_autores_list': data_type == 'fechas'
+        }
+    
+    return render(request, 'algo.html', context)

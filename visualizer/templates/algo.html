@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Visualización de Datos</title>
+    <style>
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+        }
+        .form-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+        .form-content {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .chart-container {
+            margin-top: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #fff;
+        }
+        .chart-img {
+            max-width: 100%;
+            height: auto;
+            margin-bottom: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        select {
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+            font-size: 16px;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .form-group label {
+            font-weight: bold;
+            color: #555;
+        }
+        .data-switcher {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .data-switcher input[type="radio"] {
+            display: none;
+        }
+        .data-switcher label {
+            padding: 8px 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+            background-color: #f5f5f5;
+        }
+        .data-switcher input[type="radio"]:checked + label {
+            background-color: #4CAF50;
+            color: white;
+            border-color: #4CAF50;
+        }
+        .scrollable-table {
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Sección del formulario -->
+        <div class="form-section">
+            <form action="{% url 'record' %}" method="post">
+                {% csrf_token %}
+                
+                <div class="data-switcher">
+                    <input type="radio" id="fechas" name="data_type" value="fechas" {% if selected_data_type == 'fechas' %}checked{% endif %}>
+                    <label for="fechas">Por Fechas</label>
+                    
+                    <input type="radio" id="autores" name="data_type" value="autores" {% if selected_data_type == 'autores' %}checked{% endif %}>
+                    <label for="autores">Por Autores</label>
+                </div>
+                
+                <div class="form-content">
+                    <div class="form-group">
+                        <label for="chart-type">Tipo de Gráfico</label>
+                        <select id="chart-type" name="chart_type">
+                            <option value="lineas" {% if selected_chart_type == 'lineas' %}selected{% endif %}>Líneas</option>
+                            <option value="barras" {% if selected_chart_type == 'barras' %}selected{% endif %}>Barras</option>
+                            <option value="pastel" {% if selected_chart_type == 'pastel' %}selected{% endif %}>Pastel</option>
+                            <option value="bigotes" {% if selected_chart_type == 'bigotes' %}selected{% endif %}>Bigotes</option>
+                            <option value="calor" {% if selected_chart_type == 'calor' %}selected{% endif %}>Mapas de Calor</option>
+                        </select>
+                    </div>
+                    <button type="submit">Generar Reporte</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Sección del gráfico -->
+        {% if graphic %}
+        <div class="chart-container">
+            <h2>
+                {% if selected_data_type == 'fechas' %}
+                    Publicaciones por Año
+                {% else %}
+                    Autores más Productivos
+                {% endif %}
+            </h2>
+            <img class="chart-img" src="data:image/png;base64,{{ graphic }}" alt="Gráfico de datos">
+            
+            <h3>Datos Estadísticos</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>{{ table_header.0 }}</th>
+                        <th>{{ table_header.1 }}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in table_rows %}
+                    <tr>
+                        <td>{{ row.0 }}</td>
+                        <td>{{ row.1 }}</td>
+                    </tr>
+                    {% endfor %}
+                    <tr style="font-weight: bold;">
+                        <td>Total</td>
+                        <td>{{ total }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Lista completa de autores (si estamos viendo datos por fecha) -->
+        {% if show_autores_list %}
+        <div class="chart-container">
+            <h3>Todos los Autores y sus Publicaciones</h3>
+            <div class="scrollable-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Autor</th>
+                            <th>Publicaciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for autor, count in autores_publicaciones %}
+                        <tr>
+                            <td>{{ autor }}</td>
+                            <td>{{ count }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+        {% endif %}
+    </div>
+</body>
+</html>

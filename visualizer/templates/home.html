@@ -6,75 +6,159 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
     <!-- Incluir Plotly.js desde CDN -->
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+      #jsonResults {
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 5px;
+        padding: 15px;
+        margin-top: 15px;
+      }
+      pre {
+        white-space: pre-wrap;
+        word-wrap: break-word;
+      }
+    </style>
     <script>
       document.addEventListener('DOMContentLoaded', function() {
         const pieChartRadio = document.getElementById('pastel');
         const lineChartRadio = document.getElementById('lineas');
         const barChartRadio = document.getElementById('barras');
         const boxChartRadio = document.getElementById('bigotes');
+        const scatterChartRadio = document.getElementById('dispersion');
+        const heatmapChartRadio = document.getElementById('calor');
         const columnCheckboxes = document.querySelectorAll('input[name="columnas"]');
         const libreriaSelect = document.getElementById('libreria');
         
+        // Definir todas las opciones de librerías disponibles
+        const allLibraryOptions = {
+          'matplotlib': 'Matplotlib (básico)',
+          'seaborn': 'Seaborn (estilo moderno)',
+          'ggplot': 'ggplot (estilo académico)',
+          'plotly': 'Plotly (interactivo)'
+        };
+        
         // Función para manejar cambios en los radios de tipo de gráfico
         function handleChartTypeChange() {
-          if(pieChartRadio.checked) {
+          const selectedChart = document.querySelector('input[name="grafico"]:checked').value;
+          
+          if(selectedChart === 'pastel') {
             // Seleccionar todas las columnas cuando se elige gráfico de pastel
             columnCheckboxes.forEach(checkbox => {
               checkbox.checked = true;
             });
             
-            // Actualizar las opciones del selector de librerías
-            updateLibraryOptions();
-          } else {
-            // Habilitar el selector de librerías para otros tipos de gráficos
-            libreriaSelect.disabled = false;
+            // Actualizar las opciones del selector de librerías solo para pastel
+            updateLibraryOptions('pastel');
+          } 
+          else if(selectedChart === 'dispersion' || selectedChart === 'calor') {
+            // Para dispersión y calor, requerir al menos 2 columnas seleccionadas
+            updateLibraryOptions(selectedChart);
+          }
+          else {
+            // Restaurar todas las opciones de librerías para otros tipos de gráficos
+            updateLibraryOptions('default');
           }
         }
         
-        // Función para actualizar las opciones de librerías según el tipo de gráfico
-        function updateLibraryOptions() {
-          const selectedChart = document.querySelector('input[name="grafico"]:checked').value;
-          const currentLibrary = libreriaSelect.value;
-          
-          // Guardar todas las opciones posibles
-          const allOptions = {
-            'matplotlib': 'Matplotlib (básico)',
-            'seaborn': 'Seaborn (estilo moderno)',
-            'ggplot': 'ggplot (estilo académico)',
-            'plotly': 'Plotly (interactivo)'
-          };
-          
+        // Función para actualizar las opciones de librerías
+        function updateLibraryOptions(chartType) {
           // Limpiar las opciones actuales
           libreriaSelect.innerHTML = '';
           
-          // Para gráfico de pastel, solo permitir matplotlib y plotly
-          if(selectedChart === 'pastel') {
-            const allowedLibraries = ['matplotlib', 'plotly'];
-            allowedLibraries.forEach(lib => {
+          if(chartType === 'pastel') {
+            // Para gráfico de pastel, solo permitir matplotlib, seaborn y plotly
+            const pieLibraries = ['matplotlib', 'seaborn', 'plotly'];
+            pieLibraries.forEach(lib => {
               const option = document.createElement('option');
               option.value = lib;
-              option.textContent = allOptions[lib];
+              option.textContent = allLibraryOptions[lib];
               libreriaSelect.appendChild(option);
             });
-            
-            // Si la librería actual no está permitida, cambiar a matplotlib
-            if(!allowedLibraries.includes(currentLibrary)) {
-              libreriaSelect.value = 'matplotlib';
-            }
-          } else {
+          } 
+          else if(chartType === 'dispersion') {
+            // Para gráfico de dispersión, permitir todas excepto ggplot
+            const scatterLibraries = ['matplotlib', 'seaborn', 'plotly'];
+            scatterLibraries.forEach(lib => {
+              const option = document.createElement('option');
+              option.value = lib;
+              option.textContent = allLibraryOptions[lib];
+              libreriaSelect.appendChild(option);
+            });
+          }
+          else if(chartType === 'calor') {
+            // Para mapa de calor, permitir matplotlib, seaborn y plotly
+            const heatmapLibraries = ['matplotlib', 'seaborn', 'plotly'];
+            heatmapLibraries.forEach(lib => {
+              const option = document.createElement('option');
+              option.value = lib;
+              option.textContent = allLibraryOptions[lib];
+              libreriaSelect.appendChild(option);
+            });
+          }
+          else {
             // Para otros gráficos, permitir todas las librerías
-            Object.entries(allOptions).forEach(([value, text]) => {
+            Object.entries(allLibraryOptions).forEach(([value, text]) => {
               const option = document.createElement('option');
               option.value = value;
               option.textContent = text;
               libreriaSelect.appendChild(option);
             });
-            
-            // Restaurar la selección anterior si existe
-            if(currentLibrary) {
-              libreriaSelect.value = currentLibrary;
+          }
+        }
+        
+        // Función para validar selección de columnas
+        function validateColumnSelection() {
+          const selectedChart = document.querySelector('input[name="grafico"]:checked').value;
+          const selectedColumns = document.querySelectorAll('input[name="columnas"]:checked');
+          
+          if(selectedChart === 'dispersion' || selectedChart === 'calor') {
+            if(selectedColumns.length < 2) {
+              alert(`Para gráficos de ${selectedChart === 'dispersion' ? 'dispersión' : 'mapa de calor'}, debe seleccionar al menos 2 columnas.`);
+              return false;
             }
           }
+          return true;
+        }
+        
+        // Función para conectar con la BD y extraer keys JSON
+        function connectToDatabase() {
+          console.log("Entramos");
+          const btn = document.getElementById('connectDbBtn');
+          const resultsDiv = document.getElementById('jsonResults');
+          const jsonDataPre = document.getElementById('jsonData');
+          
+          btn.disabled = true;
+          btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Conectando...';
+          
+          // Limpiar resultados previos
+          resultsDiv.style.display = 'none';
+          jsonDataPre.textContent = '';
+          
+          fetch('/json_keys/')
+              .then(response => {
+                  if (!response.ok) {
+                      throw new Error('Error en la respuesta del servidor');
+                  }
+                  return response.json();
+              })
+              .then(data => {
+                  if (data.status === 'success') {
+                      resultsDiv.style.display = 'block';
+                      jsonDataPre.textContent = JSON.stringify(data.data, null, 2);
+                      console.log("Datos JSON obtenidos:", data.data);
+                  } else {
+                      throw new Error(data.message || 'Error desconocido');
+                  }
+              })
+              .catch(error => {
+                  console.error('Error:', error);
+                  alert('Error al conectar con la base de datos: ' + error.message);
+              })
+              .finally(() => {
+                  btn.disabled = false;
+                  btn.textContent = 'Conectar con BD';
+              });
         }
         
         // Añadir event listeners a todos los radios de tipo de gráfico
@@ -82,23 +166,43 @@
         lineChartRadio.addEventListener('change', handleChartTypeChange);
         barChartRadio.addEventListener('change', handleChartTypeChange);
         boxChartRadio.addEventListener('change', handleChartTypeChange);
+        scatterChartRadio.addEventListener('change', handleChartTypeChange);
+        heatmapChartRadio.addEventListener('change', handleChartTypeChange);
         
         // Deseleccionar automáticamente el gráfico de pastel si se deselecciona alguna columna
         columnCheckboxes.forEach(checkbox => {
           checkbox.addEventListener('change', function() {
-            if(!this.checked && pieChartRadio.checked) {
+            const selectedChart = document.querySelector('input[name="grafico"]:checked').value;
+            const selectedColumns = document.querySelectorAll('input[name="columnas"]:checked');
+            
+            if(selectedChart === 'pastel' && !this.checked) {
               pieChartRadio.checked = false;
-              document.getElementById('lineas').checked = true;
+              lineChartRadio.checked = true;
               // Disparar el evento change manualmente para actualizar el estado
               const event = new Event('change');
               lineChartRadio.dispatchEvent(event);
             }
+            
+            // Validar selección para dispersión y mapa de calor
+            if((selectedChart === 'dispersion' || selectedChart === 'calor') && selectedColumns.length < 2) {
+              alert(`Para gráficos de ${selectedChart === 'dispersion' ? 'dispersión' : 'mapa de calor'}, debe mantener al menos 2 columnas seleccionadas.`);
+              this.checked = true;
+            }
           });
         });
         
+        // Validar antes de enviar el formulario
+        document.querySelector('form[action="{{ visualization_url }}"]').addEventListener('submit', function(e) {
+          if(!validateColumnSelection()) {
+            e.preventDefault();
+          }
+        });
+        
+        // Event listener para el botón de conexión a BD
+        document.getElementById('connectDbBtn').addEventListener('click', () => alert("¡Funciona!"));
+        
         // Inicializar el estado al cargar la página
-        updateLibraryOptions();
-        handleChartTypeChange();
+        updateLibraryOptions('default');
       });
     </script>
   </head>
@@ -121,23 +225,30 @@
                 <div class="d-flex flex-column">
                   <input
                     type="file"
-                    accept=".json,.txt,.csv"
+                    accept=".json,.csv"
                     name="archivo-cargado"
                     class="form-control-file mb-2"
                   />
                   <br />
                   <button
                     type="submit"
-                    class="btn btn-primary"
+                    class="btn btn-primary mb-2"
                     id="boton-cargar"
                     name="boton-cargar"
                   >
                     Cargar
                   </button>
+                  
                 </div>
               </div>
             </div>
           </form>
+          
+          <!-- Contenedor para mostrar los resultados de la BD -->
+          <div id="jsonResults" class="mt-3" style="display: none;">
+            <h4>Resultados de Keys JSON:</h4>
+            <pre id="jsonData"></pre>
+          </div>
         </div>
 
         <div class="col-md-3">
@@ -171,6 +282,26 @@
                   value="bigotes"
                 />
                 <label for="bigotes">Gráfico de Bigotes</label>
+              </li>
+              <li class="nav-item">
+                <input
+                  type="radio"
+                  id="dispersion"
+                  name="grafico"
+                  value="dispersion"
+                />
+                <label for="dispersion">Gráfico de Dispersión</label>
+                <small class="text-muted d-block">(Requiere al menos 2 columnas)</small>
+              </li>
+              <li class="nav-item">
+                <input
+                  type="radio"
+                  id="calor"
+                  name="grafico"
+                  value="calor"
+                />
+                <label for="calor">Mapa de Calor</label>
+                <small class="text-muted d-block">(Requiere al menos 2 columnas)</small>
               </li>
             </ul>
             <br />

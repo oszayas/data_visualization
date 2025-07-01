@@ -16,12 +16,12 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path
-from visualizer.views import home,loaded_file_visulization,read_and_format_file
-
+from visualizer.views import home,read_and_format_file,loaded_file_visualization,extraer_base_datos
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', home, name = 'home'),
     path('readed_file/', read_and_format_file, name = 'read_and_format_file'),
-    path('visualization', loaded_file_visulization, name = 'loaded_file_visulization')
+    path('visualization', loaded_file_visualization, name = "loaded_file_visulization"),
+    path('record/', extraer_base_datos, name = 'record')
 
 ]
